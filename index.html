@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mood RN</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        h1 { color: #5a67d8; font-size: 3em; margin-bottom: 30px; text-shadow: 0 2px 4px rgba(0,0,0,0.1); font-weight: 800; }
+        #canvas-container { width: 400px; height: 400px; position: relative; margin-bottom: 30px; }
+        button { background: rgba(255, 255, 255, 0.3); color: #5a67d8; border: 1px solid rgba(255, 255, 255, 0.5); padding: 15px 40px; font-size: 18px; font-weight: 600; border-radius: 50px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); backdrop-filter: blur(10px); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15); background: rgba(255, 255, 255, 0.4); color: #4c51bf; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        #result { position: absolute; top: 20px; right: 20px; background: rgba(255, 255, 255, 0.3); padding: 10px 20px; border-radius: 10px; font-weight: bold; color: #5a67d8; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.5); display: none; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <h1>Mood RN</h1>
+    <div id="canvas-container"></div>
+    <button id="rollButton">Roll The Dice To See My Mood RN</button>
+    <div id="result"></div>
+
+    <script>
+        let scene, camera, renderer, dice, isRolling = false;
+        
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, 400 / 400, 0.1, 1000);
+            camera.position.set(0, 0, 5);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(400, 400);
+            renderer.shadowMap.enabled = true;
+            renderer.setClearColor(0x000000, 0);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            createDice();
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            
+            animate();
+        }
+
+        function createDice() {
+            const texture = new THREE.TextureLoader().load('drose.png');
+            
+            const materials = [];
+            for (let i = 0; i < 6; i++) {
+                materials.push(new THREE.MeshLambertMaterial({ map: texture }));
+            }
+
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+            dice = new THREE.Mesh(geometry, materials);
+            
+            const edgesGeometry = new THREE.EdgesGeometry(geometry);
+            const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x333333 });
+            const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+            dice.add(edges);
+            
+            scene.add(dice);
+        }
+
+        let animationId;
+        let targetRotation = { x: 0, y: 0 };
+        let currentRotation = { x: 0, y: 0 };
+        let animationStartTime = 0;
+        const ANIMATION_DURATION = 2000;
+
+        function rollDice() {
+            if (isRolling) return;
+            
+            isRolling = true;
+            document.getElementById('rollButton').disabled = true;
+            document.getElementById('result').style.display = 'none';
+            
+            const finalSide = Math.floor(Math.random() * 6) + 1;
+            animationStartTime = Date.now();
+            
+            switch(finalSide) {
+                case 1: targetRotation = { x: 0, y: 0 }; break;
+                case 2: targetRotation = { x: 0, y: Math.PI }; break;
+                case 3: targetRotation = { x: 0, y: Math.PI / 2 }; break;
+                case 4: targetRotation = { x: 0, y: -Math.PI / 2 }; break;
+                case 5: targetRotation = { x: -Math.PI / 2, y: 0 }; break;
+                case 6: targetRotation = { x: Math.PI / 2, y: 0 }; break;
+            }
+            
+            animateRoll(finalSide);
+        }
+
+        function animateRoll(finalSide) {
+            const animate = () => {
+                const currentTime = Date.now();
+                const elapsedTime = currentTime - animationStartTime;
+                const progress = Math.min(elapsedTime / ANIMATION_DURATION, 1);
+                
+                if (progress < 1) {
+                    const easeProgress = 1 - Math.pow(1 - progress, 3);
+                    
+                    if (progress < 0.7) {
+                        const spinSpeed = 15 * (1 - progress);
+                        dice.rotation.x += spinSpeed * 0.1;
+                        dice.rotation.y += spinSpeed * 0.15;
+                        dice.rotation.z += spinSpeed * 0.05;
+                        dice.position.y = Math.sin(currentTime * 0.02) * 0.2;
+                    } else {
+                        dice.rotation.x = THREE.MathUtils.lerp(
+                            currentRotation.x, targetRotation.x, (progress - 0.7) / 0.3
+                        );
+                        dice.rotation.y = THREE.MathUtils.lerp(
+                            currentRotation.y, targetRotation.y, (progress - 0.7) / 0.3
+                        );
+                        dice.position.y = 0;
+                        currentRotation = { x: dice.rotation.x, y: dice.rotation.y };
+                    }
+                    
+                    renderer.render(scene, camera);
+                    animationId = requestAnimationFrame(animate);
+                } else {
+                    isRolling = false;
+                    document.getElementById('rollButton').disabled = false;
+                    document.getElementById('result').textContent = `You rolled: Side ${finalSide}`;
+                    document.getElementById('result').style.display = 'block';
+                }
+            };
+            
+            animate();
+        }
+
+        function animate() {
+            if (!isRolling) {
+                const time = Date.now() * 0.001;
+                dice.position.y = Math.sin(time) * 0.1;
+                dice.rotation.y += 0.005;
+            }
+            
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+
+        window.addEventListener('load', init);
+
+        document.getElementById('rollButton').addEventListener('click', rollDice);
+
+        if (window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', (event) => {
+                if (!isRolling && dice && event.beta !== null && event.gamma !== null) {
+                    dice.rotation.x = THREE.MathUtils.degToRad(event.beta * 0.5);
+                    dice.rotation.y = THREE.MathUtils.degToRad(event.gamma * 0.5);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
